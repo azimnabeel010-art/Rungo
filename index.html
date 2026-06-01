@@ -779,8 +779,36 @@ function saveChallengeDates(start,end,name){
   localStorage.setItem('rgo3_cname',name);
   MS=dateToUnixStart(start); ME=dateToUnixEnd(end); CNAME=name;
 }
+function fetchConfig(cb){
+  fetch(SURL+'/rest/v1/config?key=eq.challenge&select=value',{headers:sbHeaders()})
+    .then(function(r){return r.json();})
+    .then(function(rows){
+      if(rows&&rows[0]&&rows[0].value){
+        var v=rows[0].value;
+        var s=v.start||DEFAULT_START;
+        var e=v.end||DEFAULT_END;
+        var n=v.name||DEFAULT_NAME;
+        localStorage.setItem('rgo3_cstart',s);
+        localStorage.setItem('rgo3_cend',e);
+        localStorage.setItem('rgo3_cname',n);
+        MS=dateToUnixStart(s); ME=dateToUnixEnd(e); CNAME=n;
+        updateHeaderLabel(); updateBar();
+      }
+      if(cb) cb();
+    })
+    .catch(function(){ if(cb) cb(); });
+}
+function pushConfig(start,end,name){
+  fetch(SURL+'/rest/v1/config',{
+    method:'POST',
+    headers:Object.assign({},sbHeaders(),{'Prefer':'resolution=merge-duplicates'}),
+    body:JSON.stringify({key:'challenge',value:{start:start,end:end,name:name}})
+  }).then(function(r){
+    console.log('[RunGO] pushConfig status:',r.status);
+  }).catch(function(e){console.warn('[RunGO] pushConfig failed',e);});
+}
 function updateHeaderLabel(){ document.querySelector('.pill').textContent='🏃 '+CNAME; }
-function getTotalDays(){ return Math.round((ME-MS)/86400)+1; }
+function getTotalDays(){ return Math.round((ME-MS)/86400); }
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
 var ATH={}, MID=null, EAID=null, STYP='Run';
@@ -1266,7 +1294,9 @@ document.getElementById('fabbtn').addEventListener('click',function(){showSheet(
 document.getElementById('addbtn').addEventListener('click',function(){openAdd();});
 document.getElementById('s-ref').addEventListener('click',function(){
   showLoading(true);
-  dbLoadAll(function(){ renderLB(); showLoading(false); });
+  fetchConfig(function(){
+    dbLoadAll(function(){ renderLB(); showLoading(false); });
+  });
   if(MID&&ATH[MID]&&ATH[MID].token) refreshAll();
   hideSheet('setsht');
 });
@@ -1284,6 +1314,7 @@ document.getElementById('dsave').addEventListener('click',function(){
   if(!s||!e){ alert('Please set both start and end dates.'); return; }
   if(s>e){ alert('Start date must be before end date.'); return; }
   saveChallengeDates(s,e,n);
+  pushConfig(s,e,n);
   updateHeaderLabel(); updateBar();
   hideSheet('datesht');
   if(MID&&ATH[MID]){
@@ -1317,16 +1348,19 @@ var p=new URLSearchParams(location.search);
 var code=p.get('code'), oerr=p.get('error');
 history.replaceState({},'',location.pathname);
 
-if(oerr){
-  showAlert('Strava login cancelled.');
-  showLoading(true);
-  dbLoadAll(function(){ renderLB(); showLoading(false); });
-} else if(code){
-  handleCode(code);
-} else {
-  showLoading(true);
-  dbLoadAll(function(){ renderLB(); showLoading(false); });
-}
+// Always fetch config first so everyone gets the same challenge dates
+fetchConfig(function(){
+  if(oerr){
+    showAlert('Strava login cancelled.');
+    showLoading(true);
+    dbLoadAll(function(){ renderLB(); showLoading(false); });
+  } else if(code){
+    handleCode(code);
+  } else {
+    showLoading(true);
+    dbLoadAll(function(){ renderLB(); showLoading(false); });
+  }
+});
 </script>
 </body>
 </html>
