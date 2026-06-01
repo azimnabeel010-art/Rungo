@@ -589,7 +589,7 @@ input::placeholder{color:var(--label4)}
   <div class="pill">🏃 May 2026 Challenge</div>
   <div class="sub">Who's got the legs this month? 👀</div>
   <div class="stats" id="hstats" style="display:none">
-    <div class="stat"><div class="stat-n" id="s-total">0</div><div class="stat-l">Total km</div></div>
+    <div class="stat"><div class="stat-n" id="s-total">0</div><div class="stat-l">My km</div></div>
     <div class="stat"><div class="stat-n" id="s-runners">0</div><div class="stat-l">Runners</div></div>
     <div class="stat"><div class="stat-n" id="s-leader">—</div><div class="stat-l">Leading</div></div>
   </div>
@@ -1024,7 +1024,8 @@ function renderLB(){
   el.innerHTML=html;
 
   var tot=sorted.reduce(function(s,a){return s+a.km;},0);
-  document.getElementById('s-total').textContent=tot.toFixed(1);
+  var myKm=MID&&ATH[MID]?ATH[MID].km||0:0;
+  document.getElementById('s-total').textContent=myKm.toFixed(1);
   document.getElementById('s-runners').textContent=sorted.length;
   document.getElementById('s-leader').textContent=sorted[0].name.split(' ')[0]+' 🔥';
   document.getElementById('hstats').style.display='flex';
