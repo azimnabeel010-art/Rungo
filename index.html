@@ -581,25 +581,6 @@ input::placeholder{color:var(--label4)}
   .overlay{align-items:center;padding:20px}
   .sheet{border-radius:var(--r-2xl)}
 }
-.ath-header{display:flex;align-items:center;gap:14px;margin-bottom:18px;padding-bottom:16px;border-bottom:0.5px solid var(--sep)}
-.ath-av{width:54px;height:54px;border-radius:50%;background:rgba(255,255,255,0.1);border:1.5px solid var(--edge);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:18px;color:var(--label2);overflow:hidden;flex-shrink:0}
-.ath-av img{width:100%;height:100%;object-fit:cover}
-.ath-name{font-size:18px;font-weight:700;letter-spacing:-0.4px}
-.ath-stats{display:flex;gap:16px;margin-top:4px}
-.ath-stat{font-size:12px;color:var(--label2);font-weight:500}
-.ath-stat span{color:var(--accent);font-weight:700}
-.view-act-card{background:rgba(255,255,255,0.05);border:0.5px solid var(--edge-lo);box-shadow:inset 0 1px 0 rgba(255,255,255,0.08);border-radius:var(--r-md);padding:11px 13px;display:flex;align-items:center;gap:10px;margin-bottom:7px}
-.view-act-ic{width:34px;height:34px;border-radius:9px;border:0.5px solid var(--edge-lo);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
-.view-act-ic.run{background:rgba(255,159,10,0.14)}
-.view-act-ic.walk{background:rgba(82,255,170,0.09)}
-.view-act-b{flex:1;min-width:0}
-.view-act-n{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.view-act-m{font-size:11px;color:var(--label2);margin-top:2px}
-.view-act-km{font-size:16px;font-weight:700;color:var(--label);letter-spacing:-0.4px;text-align:right;flex-shrink:0}
-.view-act-kml{font-size:10px;color:var(--label3);font-weight:500;text-align:right}
-.clickable{cursor:pointer}
-.podium-slot.clickable:active{opacity:.8}
-.lb-item.clickable:active{transform:scale(.984)}
 </style>
 </head>
 <body>
@@ -998,7 +979,7 @@ function renderLB(){
       var avInner=a.profile?'<img src="'+a.profile+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%" onerror="this.style.display=\'none\'">':ini;
       var first=a.name.split(' ')[0];
       html+=
-        '<div class="podium-slot '+pClass+' clickable" data-uid="'+a.id+'">'+
+        '<div class="podium-slot '+pClass+'">'+
           '<div class="pod-avatar-wrap">'+
             (rank===1?'<div class="pod-crown">👑</div>':'')+
             '<div class="pod-av">'+avInner+'</div>'+
@@ -1025,7 +1006,7 @@ function renderLB(){
       var avInner=a.profile?'<img src="'+a.profile+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%" onerror="this.style.display=\'none\'">':ini;
       var cnt=a.runs||0;
       html+=
-        '<div class="lb-item clickable" data-uid="'+a.id+'">'+
+        '<div class="lb-item">'+
           '<div class="lb-rank">'+rank+'</div>'+
           '<div class="lb-av">'+avInner+'</div>'+
           '<div class="lb-info">'+
@@ -1048,16 +1029,6 @@ function renderLB(){
   document.getElementById('s-runners').textContent=sorted.length;
   document.getElementById('s-leader').textContent=sorted[0].name.split(' ')[0]+' 🔥';
   document.getElementById('hstats').style.display='flex';
-
-  // Click any athlete to view their activities
-  setTimeout(function(){
-    document.querySelectorAll('[data-uid]').forEach(function(el){
-      el.addEventListener('click',function(e){
-        var uid=el.dataset.uid;
-        if(uid && ATH[uid] && ATH[uid].acts && ATH[uid].acts.length) openAthlete(uid);
-      });
-    });
-  },0);
 }
 
 // ─── RENDER ACTIVITIES ────────────────────────────────────────────────────────
@@ -1154,8 +1125,6 @@ function openAdd(){
   var cend=localStorage.getItem('rgo3_cend')||DEFAULT_END;
   var now=new Date(), ns=new Date(cstart+'T00:00:00Z'), ne=new Date(cend+'T23:59:59Z');
   document.getElementById('adate').value=(now>=ns&&now<=ne)?now.toISOString().split('T')[0]:cstart;
-  document.getElementById('actsht').dataset.editid='';
-  EAID=null;
   showSheet('actsht');
 }
 function openEdit(id){
@@ -1163,7 +1132,6 @@ function openEdit(id){
   var act=ATH[MID].acts.find(function(a){return a.id===id;});
   if(!act) return;
   EAID=id; setType(act.type);
-  document.getElementById('actsht').dataset.editid=id;
   document.getElementById('ashtitle').textContent='✏️ Edit Activity';
   document.getElementById('ashdesc').textContent='Update this activity.';
   document.getElementById('aname').value=act.name;
@@ -1180,16 +1148,13 @@ function saveAct(){
   var date=document.getElementById('adate').value;
   if(!km||km<=0){ alert('Enter a valid distance.'); return; }
   if(!date){ alert('Enter a date.'); return; }
-  var editId=document.getElementById('actsht').dataset.editid||'';
-  if(editId){
-    var act=ATH[MID].acts.find(function(a){return a.id===editId;});
+  if(EAID){
+    var act=ATH[MID].acts.find(function(a){return a.id===EAID;});
     if(act){act.type=STYP;act.name=name;act.km=Math.round(km*100)/100;act.mins=mins;act.date=date;act.manual=true;}
   } else {
     ATH[MID].acts.unshift({id:'m'+Date.now(),type:STYP,name:name,km:Math.round(km*100)/100,mins:mins,date:date,manual:true});
     ATH[MID].acts.sort(function(a,b){return b.date.localeCompare(a.date);});
   }
-  document.getElementById('actsht').dataset.editid='';
-  EAID=null;
   recalc(MID); lsaveOwn(); dbPush(MID); hideSheet('actsht'); renderLB(); renderYou(); renderActs();
 }
 
@@ -1315,47 +1280,6 @@ function handleCode(code){
   .catch(function(e){showLoading(false);showAlert('Auth failed: '+e.message);renderLB();});
 }
 
-// ─── VIEW ATHLETE ────────────────────────────────────────────────────────────
-function openAthlete(id){
-  var a=ATH[id]; if(!a) return;
-  var ini=a.name.split(' ').map(function(n){return n[0]||'';}).join('').slice(0,2).toUpperCase();
-  var avHtml=a.profile?'<img src="'+a.profile+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%">':ini;
-  var acts=a.acts||[];
-  var km=acts.reduce(function(s,x){return s+x.km;},0);
-  document.getElementById('ath-header').innerHTML=
-    '<div class="ath-av">'+avHtml+'</div>'+
-    '<div>'+
-      '<div class="ath-name">'+esc(a.name)+'</div>'+
-      '<div class="ath-stats">'+
-        '<div class="ath-stat"><span>'+a.km.toFixed(1)+'</span> km</div>'+
-        '<div class="ath-stat"><span>'+acts.length+'</span> activit'+(acts.length!==1?'ies':'y')+'</div>'+
-      '</div>'+
-    '</div>';
-  var el=document.getElementById('ath-acts-list');
-  if(!acts.length){
-    el.innerHTML='<div class="empty"><span class="empty-icon">🏃</span><p>No activities yet</p></div>';
-  } else {
-    el.innerHTML=acts.map(function(a){
-      var ic=a.type==='Run'?'🏃':'🚶';
-      var cls=a.type==='Run'?'run':'walk';
-      var ds=a.date?new Date(a.date+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'}):'';
-      var mn=a.mins?a.mins+'min · ':'';
-      return '<div class="view-act-card">'+
-        '<div class="view-act-ic '+cls+'">'+ic+'</div>'+
-        '<div class="view-act-b">'+
-          '<div class="view-act-n">'+esc(a.name)+'</div>'+
-          '<div class="view-act-m">'+ds+(ds&&mn?' · ':'')+mn+a.type+'</div>'+
-        '</div>'+
-        '<div>'+
-          '<div class="view-act-km">'+a.km.toFixed(2)+'</div>'+
-          '<div class="view-act-kml">km</div>'+
-        '</div>'+
-      '</div>';
-    }).join('');
-  }
-  showSheet('athsht');
-}
-
 // ─── WIRE BUTTONS ─────────────────────────────────────────────────────────────
 document.getElementById('tlb').addEventListener('click',function(){switchTab('lb');});
 document.getElementById('tacts').addEventListener('click',function(){switchTab('acts');});
@@ -1402,15 +1326,13 @@ document.getElementById('dsave').addEventListener('click',function(){
   if(MID&&ATH[MID]&&ATH[MID].token){ showLoading(true); fetchActs(MID); }
 });
 document.getElementById('dcancel').addEventListener('click',function(){hideSheet('datesht');});
-document.getElementById('ath-cls').addEventListener('click',function(){hideSheet('athsht');});
-document.getElementById('athsht').addEventListener('click',function(e){if(e.target===this)hideSheet('athsht');});
 document.getElementById('datesht').addEventListener('click',function(e){if(e.target===this)hideSheet('datesht');});
 document.getElementById('s-clr').addEventListener('click',function(){
   if(confirm('Delete ALL local data?')){ localStorage.clear(); location.reload(); }
 });
 document.getElementById('s-cls').addEventListener('click',function(){hideSheet('setsht');});
 document.getElementById('asave').addEventListener('click',function(){saveAct();});
-document.getElementById('acancel').addEventListener('click',function(){EAID=null;document.getElementById('actsht').dataset.editid='';hideSheet('actsht');});
+document.getElementById('acancel').addEventListener('click',function(){hideSheet('actsht');});
 document.getElementById('tbrun').addEventListener('click',function(){setType('Run');});
 document.getElementById('tbwalk').addEventListener('click',function(){setType('Walk');});
 document.getElementById('setsht').addEventListener('click',function(e){if(e.target===this)hideSheet('setsht');});
@@ -1441,15 +1363,5 @@ fetchConfig(function(){
   }
 });
 </script>
-<!-- ATHLETE PROFILE SHEET -->
-<div class="overlay" id="athsht">
-  <div class="sheet">
-    <div class="handle"></div>
-    <div class="ath-header" id="ath-header"></div>
-    <div id="ath-acts-list"></div>
-    <button class="sclose" id="ath-cls">Close</button>
-  </div>
-</div>
-
 </body>
 </html>
