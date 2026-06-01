@@ -750,9 +750,10 @@ function sbGet(id){
 }
 
 function sbUpsert(row){
+  console.log('[RunGO] sbUpsert row id:',row.id);
   return fetch(SURL+'/rest/v1/athletes',{
     method:'POST',
-    headers:Object.assign({},sbHeaders(),{'Prefer':'resolution=merge-duplicates'}),
+    headers:Object.assign({},sbHeaders(),{'Prefer':'resolution=merge-duplicates','Content-Type':'application/json'}),
     body:JSON.stringify(row)
   });
 }
@@ -788,7 +789,11 @@ var ATH={}, MID=null, EAID=null, STYP='Run';
 function lload(){
   loadChallengeDates();
   MID=localStorage.getItem('rgo3m')||null;
-  try{ var own=JSON.parse(localStorage.getItem('rgo3own')||'null'); if(own&&own.id){ATH[own.id]=own;} }catch(e){}
+  // Load own athlete from localStorage (has token) — acts will be refreshed from DB
+  try{
+    var own=JSON.parse(localStorage.getItem('rgo3own')||'null');
+    if(own&&own.id){ ATH[own.id]=own; }
+  }catch(e){}
 }
 function lsaveOwn(){
   if(MID&&ATH[MID]) localStorage.setItem('rgo3own',JSON.stringify(ATH[MID]));
@@ -805,14 +810,19 @@ function recalc(id){
 function dbPush(id){
   if(!ATH[id]) return;
   var a=ATH[id];
-  sbUpsert({
+  var row={
     id:id, name:a.name, profile:a.profile||'',
     km:a.km, runs:a.runs,
-    token:a.token||'', refresh_token:a.refreshToken||'',
-    expires_at:a.expiresAt||0,
     acts:a.acts||[],
     updated_at:new Date().toISOString()
-  }).catch(function(e){console.warn('DB push failed',e);});
+  };
+  console.log('[RunGO] dbPush for',a.name,'km='+a.km,'acts='+row.acts.length);
+  sbUpsert(row)
+    .then(function(r){
+      console.log('[RunGO] dbPush status:',r.status);
+      if(!r.ok) r.text().then(function(t){console.warn('[RunGO] dbPush error body:',t);});
+    })
+    .catch(function(e){console.warn('[RunGO] dbPush failed',e);});
 }
 
 // ─── LOAD ALL ATHLETES FROM SUPABASE ─────────────────────────────────────────
@@ -820,14 +830,27 @@ function dbLoadAll(cb){
   sbAll().then(function(rows){
     if(!Array.isArray(rows)){cb();return;}
     rows.forEach(function(r){
+      var isMine = r.id===MID;
       if(!ATH[r.id]) ATH[r.id]={acts:[]};
       ATH[r.id].id=r.id;
       ATH[r.id].name=r.name;
       ATH[r.id].profile=r.profile||'';
       ATH[r.id].km=parseFloat(r.km)||0;
       ATH[r.id].runs=parseInt(r.runs)||0;
-      // Only load acts for own row (to keep tokens private & payload small)
-      if(r.id===MID) ATH[r.id].acts=r.acts||[];
+      // Load acts from DB for everyone (leaderboard shows act counts)
+      // But preserve local token fields — never overwrite with DB data
+      if(isMine){
+        // Merge: keep local token, but update acts from DB if we don't have a fresher local copy
+        var localOwn=null;
+        try{localOwn=JSON.parse(localStorage.getItem('rgo3own')||'null');}catch(e){}
+        if(localOwn&&localOwn.token) {
+          // We have a local token — keep it, but update acts from DB
+          ATH[r.id].token=localOwn.token;
+          ATH[r.id].refreshToken=localOwn.refreshToken;
+          ATH[r.id].expiresAt=localOwn.expiresAt;
+        }
+        ATH[r.id].acts=r.acts||[];
+      }
     });
     cb();
   }).catch(function(){cb();});
@@ -1223,7 +1246,7 @@ function handleCode(code){
     ATH[id].profile=d.athlete.profile_medium||'';
     ATH[id].token=d.access_token; ATH[id].refreshToken=d.refresh_token; ATH[id].expiresAt=d.expires_at;
     if(!ATH[id].acts) ATH[id].acts=[];
-    lsaveOwn(); renderYou(); fetchActs(id);
+    lsaveOwn(); dbPush(id); renderYou(); fetchActs(id);
   })
   .catch(function(e){showLoading(false);showAlert('Auth failed: '+e.message);renderLB();});
 }
