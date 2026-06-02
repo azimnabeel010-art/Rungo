@@ -624,6 +624,7 @@ input::placeholder{color:var(--label4)}
   margin:14px 0 8px;padding-left:2px;
 }
 
+@media(min-width:520px){
   .overlay{align-items:center;padding:20px}
   .sheet{border-radius:var(--r-2xl)}
 }
@@ -808,7 +809,6 @@ input::placeholder{color:var(--label4)}
 <script>
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 var CID  = '238005';
-var CSC  = '4d768121f8949dc6b44bdb042d4d78a5f482ca4b';
 var SURL = 'https://bsoviecdbyxlsheeodyd.supabase.co';
 var SKEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJzb3ZpZWNkYnl4bHNoZWVvZHlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMjA3NTEsImV4cCI6MjA5NTg5Njc1MX0.Sl0l10oYfHanxGPBlJHLcaR4NBu8mlW0B5GiXmyfRrM';
 
@@ -819,12 +819,6 @@ var MS, ME, CNAME;
 
 // ─── SUPABASE HELPERS ─────────────────────────────────────────────────────────
 function sbHeaders(){ return {'Content-Type':'application/json','apikey':SKEY,'Authorization':'Bearer '+SKEY}; }
-
-function sbGet(id){
-  return fetch(SURL+'/rest/v1/athletes?id=eq.'+id+'&select=*',{headers:sbHeaders()})
-    .then(function(r){return r.json();})
-    .then(function(rows){return rows&&rows[0]?rows[0]:null;});
-}
 
 function sbUpsert(row){
   console.log('[RunGO] sbUpsert row id:',row.id);
@@ -910,7 +904,7 @@ function lsaveOwn(){
 
 function recalc(id){
   var a=ATH[id]; if(!a) return;
-  var km=0; a.acts.forEach(function(x){km+=x.km;});
+  var km=0; a.acts.forEach(function(x){km+=(x.km||0);});
   a.km=Math.round(km*10)/10; a.runs=a.acts.length;
 }
 
@@ -1048,7 +1042,6 @@ function renderLB(){
   // ── PODIUM (top 1-3) ──
   if(sorted.length>=1){
     html+='<div class="podium">';
-    var podOrder=[1,0,2]; // centre=1st, left=2nd, right=3rd
     var podSlots=sorted.length===1?[0]:sorted.length===2?[1,0]:[1,0,2];
     podSlots.forEach(function(idx){
       var a=sorted[idx];
@@ -1056,8 +1049,6 @@ function renderLB(){
       var rank=idx+1;
       var pClass='p'+rank;
       var isMe=a.id===MID;
-      var crown=rank===1?'👑':rank===2?'🥈':'🥉';
-      var avSize=rank===1?72:rank===2?58:52;
       var ini=a.name.split(' ').map(function(n){return n[0]||'';}).join('').slice(0,2).toUpperCase();
       var avInner=a.profile?'<img src="'+a.profile+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%" onerror="this.style.display=\'none\'">':ini;
       var first=a.name.split(' ')[0];
@@ -1133,7 +1124,7 @@ function renderActs(){
   if(!MID||!ATH[MID]){ noU.style.display='block'; con.style.display='none'; return; }
   noU.style.display='none'; con.style.display='block';
   var acts=ATH[MID].acts||[];
-  var km=acts.reduce(function(s,a){return s+a.km;},0);
+  var km=acts.reduce(function(s,a){return s+(a.km||0);},0);
   var runs=acts.filter(function(a){return a.type==='Run';}).length;
   var walks=acts.filter(function(a){return a.type==='Walk';}).length;
   document.getElementById('sum-km').textContent=km.toFixed(1);
