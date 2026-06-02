@@ -891,13 +891,16 @@ function getTotalDays(){ return Math.round((ME-MS)/86400); }
 var ATH={}, MID=null, EAID=null, STYP='Run';
 
 // ─── LOCAL PERSISTENCE (only MID + own athlete row) ──────────────────────────
+function dedupeActs(acts){
+  var seen={}; return (acts||[]).filter(function(a){ if(seen[a.id]) return false; seen[a.id]=true; return true; });
+}
 function lload(){
   loadChallengeDates();
   MID=localStorage.getItem('rgo3m')||null;
   // Load own athlete from localStorage (has token) — acts will be refreshed from DB
   try{
     var own=JSON.parse(localStorage.getItem('rgo3own')||'null');
-    if(own&&own.id){ ATH[own.id]=own; }
+    if(own&&own.id){ own.acts=dedupeActs(own.acts); ATH[own.id]=own; }
   }catch(e){}
 }
 function lsaveOwn(){
@@ -1254,6 +1257,8 @@ function saveAct(){
     ATH[MID].acts.sort(function(a,b){return b.date.localeCompare(a.date);});
   }
   EAID=null; // clear edit state immediately after saving
+  // Deduplicate acts array by id just in case
+  var _seen={}; ATH[MID].acts=ATH[MID].acts.filter(function(a){ if(_seen[a.id]) return false; _seen[a.id]=true; return true; });
   recalc(MID); lsaveOwn(); dbPush(MID); hideSheet('actsht'); renderLB(); renderYou(); renderActs();
 }
 
@@ -1290,9 +1295,16 @@ function fetchPage(id,tok,pg,col){
   .catch(function(){showLoading(false);showAlert('Could not fetch activities.');});
 }
 function finishFetch(id,strava){
-  var manual=(ATH[id].acts||[]).filter(function(a){return a.manual;});
+  // Build a set of fresh strava IDs so we can replace them cleanly
+  var stravaIds={};
+  strava.forEach(function(a){ stravaIds[a.id]=true; });
+  // Keep manual acts, plus any non-manual acts whose ID isn't in the fresh batch
+  // (guards against stale non-manual acts accumulating alongside fresh ones)
+  var keep=(ATH[id].acts||[]).filter(function(a){
+    return a.manual || !stravaIds[a.id];
+  });
   var seen={};
-  var merged=strava.concat(manual).filter(function(a){
+  var merged=strava.concat(keep).filter(function(a){
     if(seen[a.id]) return false;
     seen[a.id]=true; return true;
   });
