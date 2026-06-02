@@ -114,7 +114,7 @@ a,button{cursor:pointer;font-family:inherit}
 }
 .tab.on{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
 
-.main{padding:20px 16px;max-width:600px;margin:0 auto}
+.main{padding:20px 16px 90px;max-width:600px;margin:0 auto}
 .pane{display:none}.pane.on{display:block}
 
 .alert{
@@ -728,6 +728,22 @@ input::placeholder{color:var(--label4)}
   </div>
 </div>
 
+<!-- USER ACTIVITIES VIEWER -->
+<div class="overlay" id="useractsht">
+  <div class="sheet">
+    <div class="handle"></div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <div class="av" id="uav" style="width:44px;height:44px;flex-shrink:0"></div>
+      <div style="flex:1;min-width:0">
+        <div id="uname" style="font-size:17px;font-weight:600;letter-spacing:-0.3px"></div>
+        <div id="umeta" style="font-size:12px;color:var(--label2);margin-top:2px"></div>
+      </div>
+    </div>
+    <div id="uactslist" style="max-height:55vh;overflow-y:auto;"></div>
+    <button class="sclose" id="u-cls">Close</button>
+  </div>
+</div>
+
 <script>
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 var CID  = '238005';
@@ -865,19 +881,17 @@ function dbLoadAll(cb){
       ATH[r.id].profile=r.profile||'';
       ATH[r.id].km=parseFloat(r.km)||0;
       ATH[r.id].runs=parseInt(r.runs)||0;
-      // Load acts from DB for everyone (leaderboard shows act counts)
-      // But preserve local token fields — never overwrite with DB data
+      // Always load acts from DB for all users (needed for activity viewer)
+      // But preserve local token fields for own athlete — never overwrite with DB data
+      ATH[r.id].acts=r.acts||[];
       if(isMine){
-        // Merge: keep local token, but update acts from DB if we don't have a fresher local copy
         var localOwn=null;
         try{localOwn=JSON.parse(localStorage.getItem('rgo3own')||'null');}catch(e){}
-        if(localOwn&&localOwn.token) {
-          // We have a local token — keep it, but update acts from DB
+        if(localOwn&&localOwn.token){
           ATH[r.id].token=localOwn.token;
           ATH[r.id].refreshToken=localOwn.refreshToken;
           ATH[r.id].expiresAt=localOwn.expiresAt;
         }
-        ATH[r.id].acts=r.acts||[];
       }
     });
     cb();
@@ -905,7 +919,7 @@ function updateBar(){
   var now=Date.now(), s=MS*1000, e=ME*1000;
   var total=getTotalDays();
   var pct=Math.min(100,Math.max(0,Math.round((now-s)/(e-s)*100)));
-  var day=Math.min(total,Math.max(1,Math.ceil((now-s)/86400000)));
+  var day=now<s?0:Math.min(total,Math.ceil((now-s)/86400000));
   document.getElementById('pf').style.width=pct+'%';
   document.getElementById('dt').textContent=day+'/'+total+' days';
   var cstart=localStorage.getItem('rgo3_cstart')||DEFAULT_START;
@@ -948,19 +962,14 @@ function renderYou(){
 // ─── RENDER LEADERBOARD ───────────────────────────────────────────────────────
 function renderLB(){
   var el=document.getElementById('lblist');
-  var sorted=Object.values(ATH).sort(function(a,b){return b.km-a.km;});
+  var sorted=Object.values(ATH).filter(function(a){return a.name&&a.id;}).sort(function(a,b){return b.km-a.km;});
   if(!sorted.length){
     el.innerHTML='<div class="empty"><span class="empty-icon">👟</span><p>No runners yet!</p><small>Share this link with your crew 💨</small></div>';
     hide('hstats'); return;
   }
 
-  function avHtml(a, size){
-    var ini=a.name.split(' ').map(function(n){return n[0]||'';}).join('').slice(0,2).toUpperCase();
-    if(a.profile) return '<img src="'+a.profile+'" style="width:'+size+'px;height:'+size+'px;object-fit:cover;border-radius:50%" onerror="this.style.display=\'none\'">';
-    return ini;
-  }
-
   var html='';
+
 
   // ── PODIUM (top 1-3) ──
   if(sorted.length>=1){
@@ -979,7 +988,7 @@ function renderLB(){
       var avInner=a.profile?'<img src="'+a.profile+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%" onerror="this.style.display=\'none\'">':ini;
       var first=a.name.split(' ')[0];
       html+=
-        '<div class="podium-slot '+pClass+'">'+
+        '<div class="podium-slot '+pClass+'" data-uid="'+a.id+'" style="cursor:pointer">'+
           '<div class="pod-avatar-wrap">'+
             (rank===1?'<div class="pod-crown">👑</div>':'')+
             '<div class="pod-av">'+avInner+'</div>'+
@@ -1006,7 +1015,7 @@ function renderLB(){
       var avInner=a.profile?'<img src="'+a.profile+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%" onerror="this.style.display=\'none\'">':ini;
       var cnt=a.runs||0;
       html+=
-        '<div class="lb-item">'+
+        '<div class="lb-item" data-uid="'+a.id+'" style="cursor:pointer">'+
           '<div class="lb-rank">'+rank+'</div>'+
           '<div class="lb-av">'+avInner+'</div>'+
           '<div class="lb-info">'+
@@ -1023,11 +1032,18 @@ function renderLB(){
 
   el.innerHTML=html;
 
+  // Wire click on all leaderboard entries to show their activities
+  el.querySelectorAll('[data-uid]').forEach(function(item){
+    item.addEventListener('click',function(){
+      showUserActs(item.dataset.uid);
+    });
+  });
+
   var tot=sorted.reduce(function(s,a){return s+a.km;},0);
   var myKm=MID&&ATH[MID]?ATH[MID].km||0:0;
   document.getElementById('s-total').textContent=myKm.toFixed(1);
   document.getElementById('s-runners').textContent=sorted.length;
-  document.getElementById('s-leader').textContent=sorted[0].name.split(' ')[0]+' 🔥';
+  document.getElementById('s-leader').textContent=(sorted[0].name||'—').split(' ')[0]+' 🔥';
   document.getElementById('hstats').style.display='flex';
 }
 
@@ -1148,13 +1164,20 @@ function saveAct(){
   var date=document.getElementById('adate').value;
   if(!km||km<=0){ alert('Enter a valid distance.'); return; }
   if(!date){ alert('Enter a date.'); return; }
-  if(EAID){
-    var act=ATH[MID].acts.find(function(a){return a.id===EAID;});
+  var editId=EAID; // capture before any async risk
+  if(editId){
+    var act=ATH[MID].acts.find(function(a){return a.id===editId;});
     if(act){act.type=STYP;act.name=name;act.km=Math.round(km*100)/100;act.mins=mins;act.date=date;act.manual=true;}
+    // Do NOT add a new entry — only update the existing one
   } else {
-    ATH[MID].acts.unshift({id:'m'+Date.now(),type:STYP,name:name,km:Math.round(km*100)/100,mins:mins,date:date,manual:true});
+    // Add new — assign unique id and avoid any duplicate
+    var newId='m'+Date.now();
+    // Guard: remove any existing entry with same id just in case
+    ATH[MID].acts=ATH[MID].acts.filter(function(a){return a.id!==newId;});
+    ATH[MID].acts.unshift({id:newId,type:STYP,name:name,km:Math.round(km*100)/100,mins:mins,date:date,manual:true});
     ATH[MID].acts.sort(function(a,b){return b.date.localeCompare(a.date);});
   }
+  EAID=null; // clear edit state immediately after saving
   recalc(MID); lsaveOwn(); dbPush(MID); hideSheet('actsht'); renderLB(); renderYou(); renderActs();
 }
 
@@ -1192,7 +1215,12 @@ function fetchPage(id,tok,pg,col){
 }
 function finishFetch(id,strava){
   var manual=(ATH[id].acts||[]).filter(function(a){return a.manual;});
-  ATH[id].acts=strava.concat(manual).sort(function(a,b){return b.date.localeCompare(a.date);});
+  var seen={};
+  var merged=strava.concat(manual).filter(function(a){
+    if(seen[a.id]) return false;
+    seen[a.id]=true; return true;
+  });
+  ATH[id].acts=merged.sort(function(a,b){return b.date.localeCompare(a.date);});
   recalc(id); lsaveOwn(); dbPush(id); showLoading(false); renderLB(); renderYou(); renderActs();
   // fetch descriptions for Strava activities in background
   fetchDescriptions(id, strava);
@@ -1213,7 +1241,7 @@ function fetchDescriptions(id, stravaActs){
     if(!tok) return;
     // only fetch for Strava activities that don't already have a descKm resolved
     var toFetch=stravaActs.filter(function(a){
-      var existing=ATH[id]&&ATH[id].acts&&ATH[id].acts.find(function(x){return x.id===a.id;});
+      var existing=ATH[id]&&ATH[id].acts&&ATH[id].acts.find(function(x){return x.id===('s'+a.stravaId);});
       return existing && existing.descDismissed===undefined && existing.descKm===undefined;
     });
     toFetch.forEach(function(a,i){
@@ -1223,7 +1251,7 @@ function fetchDescriptions(id, stravaActs){
         .then(function(r){return r.json();})
         .then(function(detail){
           var km=parseDescKm(detail.description);
-          var act=ATH[id]&&ATH[id].acts&&ATH[id].acts.find(function(x){return x.id===a.id;});
+          var act=ATH[id]&&ATH[id].acts&&ATH[id].acts.find(function(x){return x.id===('s'+a.stravaId);});
           if(!act) return;
           if(km && Math.abs(km - act.km) >= 0.05){
             act.descKm=km;
@@ -1275,7 +1303,8 @@ function handleCode(code){
     ATH[id].profile=d.athlete.profile_medium||'';
     ATH[id].token=d.access_token; ATH[id].refreshToken=d.refresh_token; ATH[id].expiresAt=d.expires_at;
     if(!ATH[id].acts) ATH[id].acts=[];
-    lsaveOwn(); dbPush(id); renderYou(); fetchActs(id);
+    lsaveOwn(); dbPush(id); renderYou();
+    dbLoadAll(function(){ fetchActs(id); });
   })
   .catch(function(e){showLoading(false);showAlert('Auth failed: '+e.message);renderLB();});
 }
@@ -1288,17 +1317,26 @@ document.getElementById('unlinkbtn').addEventListener('click',function(){
 });
 document.getElementById('refbtn').addEventListener('click',function(){
   showLoading(true);
-  dbLoadAll(function(){ renderLB(); showLoading(false); });
-  if(MID&&ATH[MID]&&ATH[MID].token) refreshAll();
+  if(MID&&ATH[MID]&&ATH[MID].token){
+    // Refresh Strava first, then load all (finishFetch will call renderLB)
+    refreshAll();
+    dbLoadAll(function(){ renderLB(); });
+  } else {
+    dbLoadAll(function(){ renderLB(); showLoading(false); });
+  }
 });
 document.getElementById('fabbtn').addEventListener('click',function(){showSheet('setsht');});
 document.getElementById('addbtn').addEventListener('click',function(){openAdd();});
 document.getElementById('s-ref').addEventListener('click',function(){
   showLoading(true);
   fetchConfig(function(){
-    dbLoadAll(function(){ renderLB(); showLoading(false); });
+    if(MID&&ATH[MID]&&ATH[MID].token){
+      refreshAll();
+      dbLoadAll(function(){ renderLB(); });
+    } else {
+      dbLoadAll(function(){ renderLB(); showLoading(false); });
+    }
   });
-  if(MID&&ATH[MID]&&ATH[MID].token) refreshAll();
   hideSheet('setsht');
 });
 document.getElementById('s-add').addEventListener('click',function(){openAdd();hideSheet('setsht');});
@@ -1338,7 +1376,44 @@ document.getElementById('tbwalk').addEventListener('click',function(){setType('W
 document.getElementById('setsht').addEventListener('click',function(e){if(e.target===this)hideSheet('setsht');});
 document.getElementById('actsht').addEventListener('click',function(e){if(e.target===this)hideSheet('actsht');});
 
-// ─── BOOT ─────────────────────────────────────────────────────────────────────
+document.getElementById('u-cls').addEventListener('click',function(){hideSheet('useractsht');});
+document.getElementById('useractsht').addEventListener('click',function(e){if(e.target===this)hideSheet('useractsht');});
+
+function showUserActs(id){
+  var a=ATH[id]; if(!a) return;
+  var ini=a.name.split(' ').map(function(n){return n[0]||'';}).join('').slice(0,2).toUpperCase();
+  var av=document.getElementById('uav');
+  if(a.profile){ av.innerHTML='<img src="'+a.profile+'" onerror="this.parentElement.textContent=\''+ini+'\'">';}
+  else{ av.textContent=ini; }
+  document.getElementById('uname').textContent=a.name;
+  var acts=a.acts||[];
+  var km=acts.reduce(function(s,x){return s+(x.km||0);},0);
+  document.getElementById('umeta').textContent=km.toFixed(1)+' km · '+acts.length+' activit'+(acts.length!==1?'ies':'y');
+  var el=document.getElementById('uactslist');
+  if(!acts.length){
+    el.innerHTML='<div class="empty" style="padding:30px 0"><span class="empty-icon">🏃</span><p>No activities yet</p></div>';
+  } else {
+    el.innerHTML=acts.map(function(x){
+      var ic=x.type==='Run'?'🏃':'🚶';
+      var cls=x.type==='Run'?'run':'walk';
+      var ds=x.date?new Date(x.date+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'}):'';
+      var mn=x.mins?x.mins+'min · ':'';
+      return '<div class="act-card" style="cursor:default">'+
+        '<div class="act-ic '+cls+'">'+ic+'</div>'+
+        '<div class="act-b" style="flex:1;min-width:0">'+
+          '<div class="act-n">'+esc(x.name)+(x.manual?'<span class="mtag">manual</span>':'')+'</div>'+
+          '<div class="act-m">'+ds+' · '+mn+x.type+'</div>'+
+        '</div>'+
+        '<div class="act-r">'+
+          '<div class="act-km">'+x.km.toFixed(2)+'</div>'+
+          '<div class="act-kml">km</div>'+
+        '</div>'+
+      '</div>';
+    }).join('');
+  }
+  showSheet('useractsht');
+}
+
 lload();
 updateBar();
 updateHeaderLabel();
