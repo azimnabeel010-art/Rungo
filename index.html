@@ -894,18 +894,36 @@ function lload(){
   // Load own athlete from localStorage (has token) — acts will be refreshed from DB
   try{
     var own=JSON.parse(localStorage.getItem('rgo3own')||'null');
-    if(own&&own.id){ own.acts=dedupeActs(own.acts); ATH[own.id]=own; }
+    if(own&&own.id){
+      var cs=localStorage.getItem('rgo3_cstart')||DEFAULT_START;
+      var ce=localStorage.getItem('rgo3_cend')||DEFAULT_END;
+      own.acts=dedupeActs((own.acts||[]).filter(function(a){
+        return !a.date||(a.date>=cs&&a.date<=ce);
+      }));
+      ATH[own.id]=own;
+    }
   }catch(e){}
 }
 function lsaveOwn(){
-  if(MID&&ATH[MID]) localStorage.setItem('rgo3own',JSON.stringify(ATH[MID]));
-  if(MID) localStorage.setItem('rgo3m',MID); else localStorage.removeItem('rgo3m');
+  if(MID&&ATH[MID]){
+    localStorage.setItem('rgo3own',JSON.stringify(ATH[MID]));
+    localStorage.setItem('rgo3m',MID);
+  } else {
+    localStorage.removeItem('rgo3own');
+    localStorage.removeItem('rgo3m');
+  }
 }
 
 function recalc(id){
   var a=ATH[id]; if(!a) return;
-  var km=0; a.acts.forEach(function(x){km+=(x.km||0);});
-  a.km=Math.round(km*10)/10; a.runs=a.acts.length;
+  var cstart=localStorage.getItem('rgo3_cstart')||DEFAULT_START;
+  var cend=localStorage.getItem('rgo3_cend')||DEFAULT_END;
+  var km=0, cnt=0;
+  (a.acts||[]).forEach(function(x){
+    // Only count acts within the challenge date range
+    if(!x.date||(x.date>=cstart&&x.date<=cend)){ km+=(x.km||0); cnt++; }
+  });
+  a.km=Math.round(km*10)/10; a.runs=cnt;
 }
 
 // ─── PUSH OWN ROW TO SUPABASE ─────────────────────────────────────────────────
@@ -941,6 +959,8 @@ function dbLoadAll(cb){
       ATH[r.id].runs=parseInt(r.runs)||0;
       // Always load acts from DB for all users (needed for activity viewer)
       // But for own athlete, prefer local data (acts + token) over DB to avoid losing edits
+      var cs2=localStorage.getItem('rgo3_cstart')||DEFAULT_START;
+      var ce2=localStorage.getItem('rgo3_cend')||DEFAULT_END;
       if(isMine){
         var localOwn=null;
         try{localOwn=JSON.parse(localStorage.getItem('rgo3own')||'null');}catch(e){}
@@ -950,17 +970,18 @@ function dbLoadAll(cb){
           ATH[r.id].expiresAt=localOwn.expiresAt;
         }
         // Use local acts if available — they are the source of truth for own athlete
-        // (edits are saved locally via lsaveOwn before dbPush, so local is always up-to-date)
-        if(localOwn&&localOwn.acts&&localOwn.acts.length){
-          ATH[r.id].acts=localOwn.acts;
-          ATH[r.id].km=parseFloat(localOwn.km)||ATH[r.id].km;
-          ATH[r.id].runs=parseInt(localOwn.runs)||ATH[r.id].runs;
-        } else {
-          ATH[r.id].acts=r.acts||[];
-        }
+        var rawActs=(localOwn&&localOwn.acts&&localOwn.acts.length)?localOwn.acts:(r.acts||[]);
+        ATH[r.id].acts=dedupeActs(rawActs.filter(function(a){
+          return !a.date||(a.date>=cs2&&a.date<=ce2);
+        }));
+        // Always recalc from acts (don't trust stored km)
+        recalc(r.id);
       } else {
-        ATH[r.id].acts=dedupeActs(r.acts||[]);
-        // Always recalc km from acts so a previously-doubled stored value can't stick
+        // Filter to challenge range and dedupe — corrects any dirty DB data immediately
+        ATH[r.id].acts=dedupeActs((r.acts||[]).filter(function(a){
+          return !a.date||(a.date>=cs2&&a.date<=ce2);
+        }));
+        // Always recalc from acts so any wrong stored km is corrected
         recalc(r.id);
       }
     });
@@ -1145,7 +1166,7 @@ function renderActs(){
     var hint='';
     if(a.descKm && a.descDismissed===undefined){
       hint='<div class="desc-hint" data-hid="'+a.id+'">'+
-        '<span>📝 Description says <strong>'+a.descKm+'km</strong> — use this instead of '+a.km.toFixed(2)+'km?</span>'+
+        '<span>📝 Description says <strong>'+a.descKm+'km</strong> — use this instead of '+(a.km||0).toFixed(2)+'km?</span>'+
         '<button class="yhint" data-yes="'+a.id+'" data-km="'+a.descKm+'">✓ Yes</button>'+
         '<button class="nhint" data-no="'+a.id+'">✕ No</button>'+
       '</div>';
@@ -1154,11 +1175,11 @@ function renderActs(){
       '<div class="act-ic '+cls+'">'+ic+'</div>'+
       '<div class="act-b" style="flex:1;min-width:0">'+
         '<div class="act-n">'+esc(a.name)+(a.manual?'<span class="mtag">manual</span>':'')+'</div>'+
-        '<div class="act-m">'+ds+' · '+mn+pc+a.type+'</div>'+
+        '<div class="act-m">'+[ds,mn+pc+a.type].filter(Boolean).join(' · ')+'</div>'+
         hint+
       '</div>'+
       '<div class="act-r">'+
-        '<div class="act-km">'+a.km.toFixed(2)+'</div>'+
+        '<div class="act-km">'+(a.km||0).toFixed(2)+'</div>'+
         '<div class="act-kml">km</div>'+
         '<div class="act-btns">'+
           '<button class="ebtn" data-edit="'+a.id+'">✏ Edit</button>'+
@@ -1212,7 +1233,9 @@ function openAdd(){
   var cstart=localStorage.getItem('rgo3_cstart')||DEFAULT_START;
   var cend=localStorage.getItem('rgo3_cend')||DEFAULT_END;
   var now=new Date(), ns=new Date(cstart+'T00:00:00Z'), ne=new Date(cend+'T23:59:59Z');
-  document.getElementById('adate').value=(now>=ns&&now<=ne)?now.toISOString().split('T')[0]:cstart;
+  // Use local date (not UTC) so users in UTC+4 don't get tomorrow's date at night
+  var todayLocal=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  document.getElementById('adate').value=(now>=ns&&now<=ne)?todayLocal:cstart;
   showSheet('actsht');
 }
 function openEdit(id){
@@ -1236,6 +1259,12 @@ function saveAct(){
   var date=document.getElementById('adate').value;
   if(!km||km<=0){ alert('Enter a valid distance.'); return; }
   if(!date){ alert('Enter a date.'); return; }
+  // Warn if date is outside challenge window
+  var _cs=localStorage.getItem('rgo3_cstart')||DEFAULT_START;
+  var _ce=localStorage.getItem('rgo3_cend')||DEFAULT_END;
+  if(date<_cs||date>_ce){
+    if(!confirm('This date ('+date+') is outside the challenge period ('+_cs+' to '+_ce+'). It won\'t count toward the total. Add anyway?')) return;
+  }
   var editId=EAID; // capture before any async risk
   if(editId){
     var act=ATH[MID].acts.find(function(a){return a.id===editId;});
@@ -1288,18 +1317,16 @@ function fetchPage(id,tok,pg,col){
   .catch(function(){showLoading(false);showAlert('Could not fetch activities.');});
 }
 function finishFetch(id,strava){
-  // Build a set of fresh strava IDs (strava array items already have id = 's'+stravaId)
-  var stravaIds={};
-  strava.forEach(function(a){ stravaIds[a.id]=true; });
-  // Keep only manual acts — drop ALL old non-manual acts and replace with fresh batch
+  // Keep manual acts (and acts edited by user which have manual:true) — put them first
+  // so they win the dedup and don't get overwritten by a fresh Strava entry with the same id
   var manuals=(ATH[id].acts||[]).filter(function(a){ return a.manual; });
-  // Merge: fresh Strava acts + manual acts, dedupe by id
+  // Merge: manuals first (their version wins), then fresh Strava batch
   var seen={};
-  var merged=strava.concat(manuals).filter(function(a){
+  var merged=manuals.concat(strava).filter(function(a){
     if(seen[a.id]) return false;
     seen[a.id]=true; return true;
   });
-  ATH[id].acts=merged.sort(function(a,b){return b.date.localeCompare(a.date);});
+  ATH[id].acts=merged.sort(function(a,b){return (b.date||'').localeCompare(a.date||'');});
   recalc(id); lsaveOwn(); dbPush(id); showLoading(false); renderLB(); renderYou(); renderActs();
   // fetch descriptions for Strava activities in background
   fetchDescriptions(id, strava);
@@ -1453,7 +1480,7 @@ function renderUpdates(){
         '<div class="upd-detail">'+esc(a.name||a.type)+mn+pace+'</div>'+
       '</div>'+
       '<div class="upd-right">'+
-        '<div class="upd-km '+('upd-type-'+typeClass)+'">'+a.km.toFixed(2)+'</div>'+
+        '<div class="upd-km '+('upd-type-'+typeClass)+'">'+(a.km||0).toFixed(2)+'</div>'+
         '<div class="upd-kml">km</div>'+
       '</div>'+
     '</div>';
@@ -1478,12 +1505,13 @@ document.getElementById('unlinkbtn').addEventListener('click',function(){
 });
 document.getElementById('refbtn').addEventListener('click',function(){
   showLoading(true);
-  if(MID&&ATH[MID]&&ATH[MID].token){
-    // refreshAll → finishFetch handles recalc, save, push, and renderLB
-    refreshAll();
-  } else {
-    dbLoadAll(function(){ renderLB(); showLoading(false); });
-  }
+  fetchConfig(function(){
+    if(MID&&ATH[MID]&&ATH[MID].token){
+      refreshAll();
+    } else {
+      dbLoadAll(function(){ renderLB(); showLoading(false); });
+    }
+  });
 });
 document.getElementById('fabbtn').addEventListener('click',function(){showSheet('setsht');});
 document.getElementById('addbtn').addEventListener('click',function(){openAdd();});
@@ -1515,10 +1543,15 @@ document.getElementById('dsave').addEventListener('click',function(){
   pushConfig(s,e,n);
   updateHeaderLabel(); updateBar();
   hideSheet('datesht');
-  if(MID&&ATH[MID]){
-    ATH[MID].acts=(ATH[MID].acts||[]).filter(function(a){return a.manual;});
-    recalc(MID); lsaveOwn(); dbPush(MID);
-  }
+  // Re-filter every athlete's acts for the new date range
+  Object.keys(ATH).forEach(function(aid){
+    ATH[aid].acts=(ATH[aid].acts||[]).filter(function(a){
+      if(aid===MID) return a.manual; // own athlete: keep only manuals (will re-fetch from Strava)
+      return !a.date||(a.date>=s&&a.date<=e);
+    });
+    recalc(aid);
+  });
+  if(MID&&ATH[MID]){ lsaveOwn(); dbPush(MID); }
   renderLB(); renderYou(); renderActs();
   if(MID&&ATH[MID]&&ATH[MID].token){ showLoading(true); fetchActs(MID); }
 });
@@ -1564,7 +1597,7 @@ function showUserActs(id){
           '<div class="act-m">'+ds+' · '+mn+x.type+'</div>'+
         '</div>'+
         '<div class="act-r">'+
-          '<div class="act-km">'+x.km.toFixed(2)+'</div>'+
+          '<div class="act-km">'+(x.km||0).toFixed(2)+'</div>'+
           '<div class="act-kml">km</div>'+
         '</div>'+
       '</div>';
