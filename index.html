@@ -1476,9 +1476,8 @@ document.getElementById('unlinkbtn').addEventListener('click',function(){
 document.getElementById('refbtn').addEventListener('click',function(){
   showLoading(true);
   if(MID&&ATH[MID]&&ATH[MID].token){
-    // Refresh Strava first, then load all (finishFetch will call renderLB)
+    // refreshAll → finishFetch handles recalc, save, push, and renderLB
     refreshAll();
-    dbLoadAll(function(){ renderLB(); });
   } else {
     dbLoadAll(function(){ renderLB(); showLoading(false); });
   }
@@ -1490,7 +1489,6 @@ document.getElementById('s-ref').addEventListener('click',function(){
   fetchConfig(function(){
     if(MID&&ATH[MID]&&ATH[MID].token){
       refreshAll();
-      dbLoadAll(function(){ renderLB(); });
     } else {
       dbLoadAll(function(){ renderLB(); showLoading(false); });
     }
