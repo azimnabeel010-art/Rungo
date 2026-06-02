@@ -966,6 +966,7 @@ function autoCleanDB(rows){
   var fixed=0;
   rows.forEach(function(r){
     if(!r.id||!r.name) return;
+    if(r.id===MID) return; // never auto-fix own row from DB — local is source of truth
     var rawActs=safeActs(r.acts);
     // Keep manual acts regardless of date; filter non-manual to challenge range
     var cleanActs=dedupeActs(rawActs.filter(function(a){
@@ -1006,9 +1007,14 @@ function dbLoadAll(cb){
           ATH[r.id].refreshToken=localOwn.refreshToken;
           ATH[r.id].expiresAt=localOwn.expiresAt;
         }
-        // Prefer local acts (source of truth for own athlete); fall back to DB
-        var raw=safeActs((localOwn&&localOwn.acts&&localOwn.acts.length)?localOwn.acts:r.acts);
-        ATH[r.id].acts=dedupeActs(raw.filter(function(a){return inRange(a&&a.date);}));
+        // Own athlete: manual acts always win — preserves edits across refreshes
+        var manuals=localOwn?safeActs(localOwn.acts).filter(function(a){return a.manual;}):[];
+        var baseActs=safeActs((localOwn&&localOwn.acts&&localOwn.acts.length)?localOwn.acts:r.acts);
+        var seen={};
+        var merged=manuals.concat(baseActs).filter(function(a){
+          if(!a||seen[a.id]) return false; seen[a.id]=true; return true;
+        });
+        ATH[r.id].acts=dedupeActs(merged.filter(function(a){return inRange(a&&a.date);}));
       } else {
         ATH[r.id].acts=dedupeActs(safeActs(r.acts).filter(function(a){return inRange(a&&a.date);}));
       }
