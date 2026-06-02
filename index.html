@@ -577,7 +577,53 @@ input::placeholder{color:var(--label4)}
 }
 .go-btn:active{opacity:.82;transform:scale(.99)}
 
-@media(min-width:520px){
+/* ─── UPDATES FEED ─── */
+.update-item{
+  background:rgba(255,255,255,0.06);
+  backdrop-filter:saturate(140%) blur(16px);
+  -webkit-backdrop-filter:saturate(140%) blur(16px);
+  border:0.5px solid var(--edge-lo);
+  box-shadow:var(--spec-sm),0 2px 12px rgba(0,0,0,0.18);
+  border-radius:var(--r-lg);
+  padding:13px 14px;
+  display:flex;align-items:center;gap:12px;
+  margin-bottom:8px;
+  transition:transform .12s;
+}
+.update-item:active{transform:scale(.984)}
+.upd-av{
+  width:38px;height:38px;border-radius:50%;
+  background:rgba(255,255,255,0.1);
+  border:0.5px solid var(--edge-lo);
+  display:flex;align-items:center;justify-content:center;
+  font-weight:600;font-size:13px;color:var(--label2);
+  flex-shrink:0;overflow:hidden;
+}
+.upd-av img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.upd-body{flex:1;min-width:0}
+.upd-who{font-weight:600;font-size:14px;letter-spacing:-0.2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.upd-detail{font-size:12px;color:var(--label2);margin-top:3px;font-weight:400}
+.upd-right{text-align:right;flex-shrink:0}
+.upd-km{font-size:17px;font-weight:700;color:var(--label);letter-spacing:-0.5px}
+.upd-kml{font-size:10px;color:var(--label3);font-weight:500;margin-top:1px}
+.upd-type-run{color:var(--accent)}
+.upd-type-walk{color:var(--green)}
+.upd-badge{
+  display:inline-block;
+  font-size:9px;font-weight:700;letter-spacing:0.2px;
+  padding:2px 6px;border-radius:4px;margin-left:4px;
+  vertical-align:middle;
+}
+.upd-badge.run{background:rgba(255,159,10,0.16);color:var(--accent);border:0.5px solid rgba(255,159,10,0.28);}
+.upd-badge.walk{background:rgba(82,255,170,0.1);color:var(--green);border:0.5px solid rgba(82,255,170,0.22);}
+.upd-date-sep{
+  text-align:center;
+  font-size:11px;font-weight:600;color:var(--label3);
+  text-transform:uppercase;letter-spacing:0.8px;
+  margin:14px 0 8px;padding-left:2px;
+}
+
   .overlay{align-items:center;padding:20px}
   .sheet{border-radius:var(--r-2xl)}
 }
@@ -585,12 +631,13 @@ input::placeholder{color:var(--label4)}
 </head>
 <body>
 
-<div class="header">
+<div class="header" style="position:relative">
+  <button id="tupdates" style="position:absolute;top:18px;right:16px;background:rgba(255,255,255,0.1);border:0.5px solid rgba(255,255,255,0.18);border-radius:999px;padding:5px 12px;font-size:15px;color:var(--label2);font-family:inherit;font-weight:500;transition:background .15s;z-index:2" title="Updates">🔔<span id="upd-badge" style="display:none;position:absolute;top:-3px;right:-3px;width:8px;height:8px;background:var(--accent);border-radius:50%;border:1.5px solid var(--bg)"></span></button>
   <div class="pill">🏃 May 2026 Challenge</div>
   <div class="sub">Who's got the legs this month? 👀</div>
   <div class="stats" id="hstats" style="display:none">
-    <div class="stat"><div class="stat-n" id="s-total">0</div><div class="stat-l">My km</div></div>
-    <div class="stat"><div class="stat-n" id="s-runners">0</div><div class="stat-l">Runners</div></div>
+    <div class="stat"><div class="stat-n" id="s-total">0</div><div class="stat-l">km to leader</div></div>
+    <div class="stat"><div class="stat-n" id="s-runners">—</div><div class="stat-l">My rank</div></div>
     <div class="stat"><div class="stat-n" id="s-leader">—</div><div class="stat-l">Leading</div></div>
   </div>
 </div>
@@ -640,6 +687,20 @@ input::placeholder{color:var(--label4)}
     <div class="loading" id="lbload"><span class="spin"></span>Fetching runs…</div>
     <div id="lblist">
       <div class="empty"><span class="empty-icon">👟</span><p>No runners yet!</p><small>Share this with your crew 💨</small></div>
+    </div>
+  </div>
+
+  <!-- UPDATES SHEET -->
+  <div class="overlay" id="updatesht">
+    <div class="sheet">
+      <div class="handle"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <h3 style="margin:0">🔔 Updates</h3>
+        <button class="sclose" id="upd-cls" style="width:auto;margin:0;padding:8px 16px;font-size:14px">Close</button>
+      </div>
+      <div id="updateslist" style="max-height:62vh;overflow-y:auto;">
+        <div class="empty"><span class="empty-icon">📭</span><p>No updates yet</p><small>Activities will show up here once people sync!</small></div>
+      </div>
     </div>
   </div>
 
@@ -1039,12 +1100,17 @@ function renderLB(){
     });
   });
 
-  var tot=sorted.reduce(function(s,a){return s+a.km;},0);
   var myKm=MID&&ATH[MID]?ATH[MID].km||0:0;
-  document.getElementById('s-total').textContent=myKm.toFixed(1);
-  document.getElementById('s-runners').textContent=sorted.length;
+  var leaderKm=sorted[0]?sorted[0].km||0:0;
+  var gap=MID&&ATH[MID]?Math.max(0,leaderKm-myKm):0;
+  var myRank=MID?sorted.findIndex(function(a){return a.id===MID;})+1:0;
+  var rankLabel=myRank?('#'+myRank+(myRank===1?' 🥇':myRank===2?' 🥈':myRank===3?' 🥉':'')):'—';
+  document.getElementById('s-total').textContent=MID&&ATH[MID]?(myRank===1?'Leader 🔥':gap.toFixed(1)):'—';
+  document.getElementById('s-runners').textContent=rankLabel;
   document.getElementById('s-leader').textContent=(sorted[0].name||'—').split(' ')[0]+' 🔥';
   document.getElementById('hstats').style.display='flex';
+  // Keep updates fresh if sheet is open
+  if(document.getElementById('updatesht').classList.contains('on')) renderUpdates();
 }
 
 // ─── RENDER ACTIVITIES ────────────────────────────────────────────────────────
@@ -1309,9 +1375,91 @@ function handleCode(code){
   .catch(function(e){showLoading(false);showAlert('Auth failed: '+e.message);renderLB();});
 }
 
+// ─── RENDER UPDATES FEED ──────────────────────────────────────────────────────
+function renderUpdates(){
+  var el=document.getElementById('updateslist');
+  // Collect all activities from all athletes
+  var allActs=[];
+  Object.values(ATH).forEach(function(a){
+    if(!a.name||!a.id) return;
+    (a.acts||[]).forEach(function(act){
+      allActs.push({
+        athleteId:a.id,
+        name:a.name,
+        profile:a.profile||'',
+        act:act
+      });
+    });
+  });
+  if(!allActs.length){
+    el.innerHTML='<div class="empty"><span class="empty-icon">📭</span><p>No updates yet</p><small>Activities will show up here once people sync!</small></div>';
+    return;
+  }
+  // Sort newest first
+  allActs.sort(function(a,b){
+    var da=a.act.date||'';
+    var db=b.act.date||'';
+    if(db!==da) return db.localeCompare(da);
+    // tiebreak: run before walk
+    return 0;
+  });
+  var html='';
+  var lastDay='';
+  allActs.forEach(function(item){
+    var a=item.act;
+    var isMe=item.athleteId===MID;
+    var isRun=a.type==='Run';
+    var ic=isRun?'🏃':'🚶';
+    var typeClass=isRun?'run':'walk';
+    var ini=item.name.split(' ').map(function(n){return n[0]||'';}).join('').slice(0,2).toUpperCase();
+    var avInner=item.profile?'<img src="'+item.profile+'" onerror="this.parentElement.textContent=\''+ini+'\'">':ini;
+    var ds='';
+    var dayKey='';
+    if(a.date){
+      var d=new Date(a.date+'T12:00:00');
+      ds=d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+      dayKey=a.date;
+    }
+    var mn=a.mins?' · '+a.mins+'min':'';
+    var pace=(a.mins&&a.km>0)?' · '+(a.mins/a.km).toFixed(1)+' min/km':'';
+    // Date separator
+    if(dayKey && dayKey!==lastDay){
+      var now=new Date();
+      var today=now.toISOString().slice(0,10);
+      var yest=new Date(now-86400000).toISOString().slice(0,10);
+      var sepLabel=dayKey===today?'Today':dayKey===yest?'Yesterday':ds;
+      html+='<div class="upd-date-sep">'+sepLabel+'</div>';
+      lastDay=dayKey;
+    }
+    html+='<div class="update-item" data-uid="'+item.athleteId+'" style="cursor:pointer">'+
+      '<div class="upd-av">'+avInner+'</div>'+
+      '<div class="upd-body">'+
+        '<div class="upd-who">'+esc(item.name)+(isMe?'<span class="you-b">YOU</span>':'')+
+          '<span class="upd-badge '+typeClass+'">'+ic+' '+a.type+'</span>'+
+        '</div>'+
+        '<div class="upd-detail">'+esc(a.name||a.type)+mn+pace+'</div>'+
+      '</div>'+
+      '<div class="upd-right">'+
+        '<div class="upd-km '+('upd-type-'+typeClass)+'">'+a.km.toFixed(2)+'</div>'+
+        '<div class="upd-kml">km</div>'+
+      '</div>'+
+    '</div>';
+  });
+  el.innerHTML=html;
+  // Wire clicks to show user activities
+  el.querySelectorAll('[data-uid]').forEach(function(item){
+    item.addEventListener('click',function(){
+      showUserActs(item.dataset.uid);
+    });
+  });
+}
+
 // ─── WIRE BUTTONS ─────────────────────────────────────────────────────────────
 document.getElementById('tlb').addEventListener('click',function(){switchTab('lb');});
 document.getElementById('tacts').addEventListener('click',function(){switchTab('acts');});
+document.getElementById('tupdates').addEventListener('click',function(){renderUpdates();showSheet('updatesht');});
+document.getElementById('upd-cls').addEventListener('click',function(){hideSheet('updatesht');});
+document.getElementById('updatesht').addEventListener('click',function(e){if(e.target===this)hideSheet('updatesht');});
 document.getElementById('unlinkbtn').addEventListener('click',function(){
   if(confirm('Remove from this device?')){MID=null;lsaveOwn();renderYou();renderLB();}
 });
