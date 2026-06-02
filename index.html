@@ -943,8 +943,7 @@ function dbLoadAll(cb){
       ATH[r.id].km=parseFloat(r.km)||0;
       ATH[r.id].runs=parseInt(r.runs)||0;
       // Always load acts from DB for all users (needed for activity viewer)
-      // But preserve local token fields for own athlete — never overwrite with DB data
-      ATH[r.id].acts=r.acts||[];
+      // But for own athlete, prefer local data (acts + token) over DB to avoid losing edits
       if(isMine){
         var localOwn=null;
         try{localOwn=JSON.parse(localStorage.getItem('rgo3own')||'null');}catch(e){}
@@ -953,6 +952,17 @@ function dbLoadAll(cb){
           ATH[r.id].refreshToken=localOwn.refreshToken;
           ATH[r.id].expiresAt=localOwn.expiresAt;
         }
+        // Use local acts if available — they are the source of truth for own athlete
+        // (edits are saved locally via lsaveOwn before dbPush, so local is always up-to-date)
+        if(localOwn&&localOwn.acts&&localOwn.acts.length){
+          ATH[r.id].acts=localOwn.acts;
+          ATH[r.id].km=parseFloat(localOwn.km)||ATH[r.id].km;
+          ATH[r.id].runs=parseInt(localOwn.runs)||ATH[r.id].runs;
+        } else {
+          ATH[r.id].acts=r.acts||[];
+        }
+      } else {
+        ATH[r.id].acts=r.acts||[];
       }
     });
     cb();
